@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Shelf</title>
+<link rel="apple-touch-icon" id="touch-icon" href="icon.png">
+<style>
+  :root {
+    /* Layout: a plain list of saved tools with one add button. A running tool takes the whole screen. */
+    --bg: #f1f4f4;
+    --panel: #ffffff;
+    --edge: #d3dbdb;
+    --text: #172326;
+    --muted: #55666a;
+    --accent: #0b6b6f;
+    --accent-ink: #ffffff;
+    --bad: #a8261e;
+    --scrim: rgba(12, 20, 22, 0.5);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101617; --panel: #192122; --edge: #2c3a3c; --text: #e6eeee; --muted: #9bb0b3;
+      --accent: #5fd0d3; --accent-ink: #05292b; --bad: #ff9f96; --scrim: rgba(0, 0, 0, 0.62);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101617; --panel: #192122; --edge: #2c3a3c; --text: #e6eeee; --muted: #9bb0b3;
+    --accent: #5fd0d3; --accent-ink: #05292b; --bad: #ff9f96; --scrim: rgba(0, 0, 0, 0.62);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.4; -webkit-text-size-adjust: 100%; }
+  [hidden] { display: none !important; }
+
+  /* Shelf */
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px 40px; }
+  h1 { margin: 22px 0 4px; font-size: 26px; line-height: 1.15; letter-spacing: -0.01em; }
+  .lede { margin: 0 0 16px; color: var(--muted); max-width: 60ch; }
+  h2 { margin: 22px 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; }
+  ul.tools { list-style: none; margin: 0; padding: 0; }
+  ul.tools li { display: flex; align-items: stretch; border-top: 1px solid var(--edge); }
+  ul.tools li:first-child { border-top: 0; }
+  .open {
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  }
+  .tile { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 17px; }
+  .open b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .open small { display: block; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .more { flex: 0 0 52px; background: none; border: 0; border-left: 1px solid var(--edge); color: var(--muted); font: inherit; font-size: 20px; cursor: pointer; }
+  .empty { margin: 0; padding: 16px 14px; color: var(--muted); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 16px;
+    border-radius: 12px; border: 1px solid var(--edge); background: var(--panel); color: var(--text);
+    font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  }
+  .btn.go { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .btn.danger { color: var(--bad); }
+  .wide { display: flex; width: 100%; margin-top: 12px; }
+  .small { margin: 10px 0 0; font-size: 13px; color: var(--muted); max-width: 62ch; }
+  .small code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .offscreen { position: fixed; left: -999px; top: 0; }
+
+  /* Sheet with the actions for one tool */
+  .scrim { position: fixed; inset: 0; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; z-index: 5; }
+  .sheet {
+    width: 100%; max-width: 520px; background: var(--bg); border: 1px solid var(--edge); border-bottom: 0; border-radius: 16px 16px 0 0;
+    padding: 14px 16px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px;
+  }
+  .sheet h3 { margin: 0 0 2px; font-size: 17px; overflow-wrap: anywhere; }
+  .sheet p { margin: 0 0 6px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: calc(100% - 32px); z-index: 9;
+    padding: 9px 15px; border-radius: 999px; background: var(--text); color: var(--bg); font-size: 13px; text-align: center;
+    pointer-events: none; opacity: 0; transition: opacity 0.18s ease;
+  }
+  .toast.on { opacity: 1; }
+
+  /* A running tool */
+  #stage { position: fixed; inset: 0; background: #fff; }
+  #frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+  .pill {
+    position: fixed; top: max(6px, env(safe-area-inset-top)); left: 6px; z-index: 3; min-height: 30px; padding: 4px 11px;
+    border-radius: 999px; border: 0; background: rgba(23, 35, 38, 0.72); color: #fff; font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; opacity: 0.45;
+  }
+  .pill:active, .pill:focus-visible { opacity: 1; }
+
+  /* First run of a tool link on a device that has not saved it yet */
+  .need { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; }
+  .need div { max-width: 420px; }
+  .need h1 { margin-top: 0; }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+
+<div id="shelf" hidden>
+  <div class="wrap">
+    <h1>Shelf</h1>
+    <p class="lede">Single-file tools, saved on this device and run from this address. They work with no signal and keep their own data.</p>
+
+    <h2>Tools</h2>
+    <div class="panel">
+      <ul class="tools" id="list"></ul>
+      <p class="empty" id="empty">Nothing saved yet. Add a tool's .html file from Files.</p>
+    </div>
+    <button class="btn go wide" id="add" type="button">Add a tool from Files</button>
+    <input class="offscreen" type="file" id="picker" accept=".html,.htm,text/html" aria-label="Tool file" tabindex="-1">
+
+    <p class="small" id="where"></p>
+    <p class="small">Every tool here shares one storage area, so only add files you trust. A Home Screen icon keeps its own separate copy of the shelf.</p>
+  </div>
+</div>
+
+<div class="need" id="need" hidden>
+  <div>
+    <h1 id="need-title">This tool is not saved here yet</h1>
+    <p class="lede" id="need-text"></p>
+    <button class="btn go wide" id="need-pick" type="button">Pick its file</button>
+    <a class="btn wide" id="need-shelf" href="./">Go to the shelf</a>
+  </div>
+</div>
+
+<div id="stage" hidden>
+  <button class="pill" id="back" type="button" hidden>‹ Shelf</button>
+  <button class="pill" id="keep" type="button" hidden>Keep on shelf</button>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-name">
+    <h3 id="sheet-name"></h3>
+    <p id="sheet-info"></p>
+    <button class="btn go" id="act-open" type="button">Open</button>
+    <button class="btn" id="act-link" type="button">Copy its link</button>
+    <button class="btn" id="act-carry" type="button">Copy a link that carries the tool</button>
+    <button class="btn" id="act-replace" type="button">Replace with a newer file</button>
+    <button class="btn danger" id="act-remove" type="button">Remove from this shelf</button>
+    <button class="btn" id="act-close" type="button">Close</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var el = function (tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  var BASE = location.origin + location.pathname.replace(/[^/]*$/, '');   // the folder this page lives in
+  var HOME_ICON = $('touch-icon').getAttribute('href');
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(function () { /* still works online */ });
+
+  /* ---------- small helpers ---------- */
+
+  var toastTimer = null;
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('on'); }, 2600);
+  }
+  function size(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (Math.round(n / 102.4) / 10) + ' KB' : (Math.round(n / 104857.6) / 10) + ' MB'; }
+  function slug(name) {
+    var s = String(name).toLowerCase().replace(/\.html?$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return s || 'tool';
+  }
+  function titleOf(html) { var m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i); return m ? m[1].replace(/\s+/g, ' ').trim() : ''; }
+  function hue(name) { var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360; return h; }
+  function initials(name) { var w = name.trim().split(/\s+/); return ((w[0] || 'T').charAt(0) + (w[1] ? w[1].charAt(0) : '')).toUpperCase(); }
+  function copy(text, done) {
+    var ok = function () { toast(done); };
+    var byHand = function () {
+      var ta = el('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.className = 'offscreen'; ta.style.fontSize = '16px';
+      document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+      var good = false; try { good = document.execCommand('copy'); } catch (e) { good = false; }
+      ta.remove(); toast(good ? done : 'Copying was blocked on this device.');
+    };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, byHand); else byHand(); } catch (e) { byHand(); }
+  }
+  function readText(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result)); };
+      r.onerror = function () { reject(new Error('unreadable')); };
+      r.readAsText(file);
+    });
+  }
+
+  /* ---------- the saved tools, kept in this browser's database ---------- */
+
+  var dbReady = null;
+  function db() {
+    if (!dbReady) dbReady = new Promise(function (resolve, reject) {
+      var req;
+      try { req = indexedDB.open('shelf', 1); } catch (e) { return reject(e); }
+      req.onupgradeneeded = function () { req.result.createObjectStore('tools', { keyPath: 'id' }); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+    return dbReady;
+  }
+  function store(mode, work) {
+    return db().then(function (d) {
+      return new Promise(function (resolve, reject) {
+        var tx = d.transaction('tools', mode), out;
+        var req = work(tx.objectStore('tools'));
+        if (req) req.onsuccess = function () { out = req.result; };
+        tx.oncomplete = function () { resolve(out); };
+        tx.onerror = tx.onabort = function () { reject(tx.error); };
+      });
+    });
+  }
+  var Tools = {
+    all: function () { return store('readonly', function (s) { return s.getAll(); }).then(function (a) { return (a || []).sort(function (x, y) { return x.name.localeCompare(y.name); }); }); },
+    get: function (id) { return store('readonly', function (s) { return s.get(id); }); },
+    put: function (t) { return store('readwrite', function (s) { return s.put(t); }); },
+    remove: function (id) { return store('readwrite', function (s) { return s.delete(id); }); }
+  };
+  // Saves a picked file as a tool. With forceId it lands under that name, which is how a tool gets replaced.
+  function saveFile(file, forceId) {
+    return readText(file).then(function (html) {
+      if (!/<html[\s>]|<!doctype html|<body[\s>]|<script[\s>]/i.test(html)) throw new Error('not-html');
+      var name = titleOf(html) || file.name.replace(/\.html?$/i, '') || 'Tool';
+      var id = forceId || slug(name);
+      return Tools.get(id).then(function (old) {
+        var tool = { id: id, name: name, html: html, bytes: new Blob([html]).size, updated: Date.now() };
+        return Tools.put(tool).then(function () {
+          try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* optional */ }
+          return { tool: tool, replaced: old || null };
+        });
+      });
+    });
+  }
+  function saveMessage(res) {
+    return res.replaced
+      ? 'Replaced ' + res.tool.name + ' (' + size(res.replaced.bytes) + ' → ' + size(res.tool.bytes) + ').'
+      : 'Added ' + res.tool.name + ' (' + size(res.tool.bytes) + ').';
+  }
+
+  /* ---------- a link that carries the whole tool after the # mark, which is never sent to a server ---------- */
+
+  function b64url(bytes) {
+    var bin = '';
+    for (var i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function unb64url(text) {
+    var b = text.replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '=';
+    var bin = atob(b), out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+  function pipe(bytes, Stream) { return new Response(new Response(bytes).body.pipeThrough(new Stream('gzip'))).arrayBuffer().then(function (b) { return new Uint8Array(b); }); }
+  function carryLink(html) {
+    var bytes = new TextEncoder().encode(html);
+    if (typeof CompressionStream === 'function') return pipe(bytes, CompressionStream).then(function (z) { return BASE + '#z=' + b64url(z); });
+    return Promise.resolve(BASE + '#h=' + b64url(bytes));
+  }
+  function carried() {
+    var m = location.hash.match(/^#(z|h)=([A-Za-z0-9_-]+)$/);
+    if (!m) return Promise.resolve(null);
+    var bytes = unb64url(m[2]);
+    var plain = m[1] === 'z' ? pipe(bytes, DecompressionStream) : Promise.resolve(bytes);
+    return plain.then(function (b) { return new TextDecoder().decode(b); });
+  }
+
+  /* ---------- running a tool ---------- */
+
+  function setIcon(name) {
+    var link = $('touch-icon');
+    if (!name) { link.setAttribute('href', HOME_ICON); return; }
+    try {
+      var c = document.createElement('canvas'); c.width = c.height = 180;
+      var g = c.getContext('2d');
+      g.fillStyle = 'hsl(' + hue(name) + ', 55%, 38%)'; g.fillRect(0, 0, 180, 180);
+      g.fillStyle = '#ffffff'; g.font = 'bold 84px -apple-system, Helvetica, Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(initials(name), 90, 96);
+      link.setAttribute('href', c.toDataURL('image/png'));
+    } catch (e) { link.setAttribute('href', HOME_ICON); }
+  }
+  function show(which) {
+    $('shelf').hidden = which !== 'shelf';
+    $('need').hidden = which !== 'need';
+    $('stage').hidden = which !== 'stage';
+  }
+  function run(tool, how) {
+    var old = $('frame'); if (old) old.remove();
+    var f = el('iframe'); f.id = 'frame'; f.title = tool.name;
+    f.setAttribute('allow', 'camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen; web-share; autoplay; accelerometer; gyroscope');
+    f.srcdoc = tool.html;
+    $('stage').insertBefore(f, $('stage').firstChild);
+    $('back').hidden = how !== 'from-shelf';
+    $('keep').hidden = how !== 'carried';
+    document.title = tool.name;
+    setIcon(tool.name);
+    show('stage');
+  }
+  function stopTool() { var f = $('frame'); if (f) f.remove(); document.title = 'Shelf'; setIcon(null); }
+
+  /* ---------- the shelf ---------- */
+
+  var current = null;   // the tool whose action sheet is open
+  var replaceId = null; // set while picking a newer file for an existing tool
+  function linkFor(tool) { return BASE + '?run=' + encodeURIComponent(tool.id); }
+
+  function renderShelf() {
+    return Tools.all().then(function (tools) {
+      var list = $('list'); list.textContent = '';
+      tools.forEach(function (t) {
+        var li = el('li');
+        var open = el('button', 'open'); open.type = 'button';
+        var tile = el('span', 'tile', initials(t.name)); tile.style.background = 'hsl(' + hue(t.name) + ', 55%, 38%)'; tile.setAttribute('aria-hidden', 'true');
+        var words = el('span'); words.style.minWidth = '0';
+        words.appendChild(el('b', '', t.name));
+        words.appendChild(el('small', '', size(t.bytes) + ' · saved ' + new Date(t.updated).toLocaleDateString()));
+        open.appendChild(tile); open.appendChild(words);
+        open.addEventListener('click', function () { history.pushState({ run: t.id }, '', linkFor(t)); run(t, 'from-shelf'); });
+        var more = el('button', 'more', '⋯'); more.type = 'button'; more.setAttribute('aria-label', 'More for ' + t.name);
+        more.addEventListener('click', function () { openSheet(t); });
+        li.appendChild(open); li.appendChild(more);
+        list.appendChild(li);
+      });
+      $('empty').hidden = tools.length > 0;
+      $('where').textContent = 'This shelf lives at ' + BASE;
+    }, function () {
+      $('empty').hidden = false;
+      $('empty').textContent = 'This browser will not let the shelf save anything, so tools cannot be kept here. Private browsing can cause that.';
+    });
+  }
+  function openSheet(t) {
+    current = t;
+    $('sheet-name').textContent = t.name;
+    $('sheet-info').textContent = size(t.bytes) + ' · link: ' + linkFor(t);
+    $('scrim').hidden = false;
+    $('act-open').focus();
+  }
+  function closeSheet() { $('scrim').hidden = true; current = null; }
+  $('act-close').addEventListener('click', closeSheet);
+  $('scrim').addEventListener('click', function (e) { if (e.target === $('scrim')) closeSheet(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('scrim').hidden) closeSheet(); });
+  $('act-open').addEventListener('click', function () { var t = current; closeSheet(); history.pushState({ run: t.id }, '', linkFor(t)); run(t, 'from-shelf'); });
+  $('act-link').addEventListener('click', function () { copy(linkFor(current), 'Link copied. It works wherever this tool is saved.'); });
+  $('act-carry').addEventListener('click', function () {
+    var t = current;
+    carryLink(t.html).then(function (url) { copy(url, 'Carry-all link copied: ' + url.length.toLocaleString() + ' characters.'); }, function () { toast('That link could not be built.'); });
+  });
+  $('act-replace').addEventListener('click', function () { replaceId = current.id; closeSheet(); $('picker').value = ''; $('picker').click(); });
+  $('act-remove').addEventListener('click', function () {
+    var t = current; closeSheet();
+    Tools.remove(t.id).then(function () { toast('Removed ' + t.name + ' from this shelf. Its saved data is untouched.'); return renderShelf(); });
+  });
+
+  $('add').addEventListener('click', function () { replaceId = null; $('picker').value = ''; $('picker').click(); });
+  $('picker').addEventListener('change', function () {
+    var f = $('picker').files && $('picker').files[0]; if (!f) return;
+    var into = replaceId; replaceId = null;
+    saveFile(f, into).then(function (res) {
+      toast(saveMessage(res));
+      if (needId) { var id = needId; needId = null; history.replaceState({ run: id }, '', BASE + '?run=' + encodeURIComponent(id)); run(res.tool, 'direct'); return; }
+      return renderShelf();
+    }, function (e) { toast(e && e.message === 'not-html' ? 'That file is not a web page.' : 'That file could not be saved here.'); });
+  });
+
+  /* ---------- a tool link opened where the tool has not been saved ---------- */
+
+  var needId = null;
+  function askFor(id) {
+    needId = id;
+    $('need-text').textContent = 'The link asks for "' + id + '", and this device has no tool saved under that name. Pick its file once and it will open straight from here every time after.';
+    show('need');
+  }
+  $('need-pick').addEventListener('click', function () { replaceId = needId; $('picker').value = ''; $('picker').click(); });
+
+  /* ---------- pills on a running tool ---------- */
+
+  $('back').addEventListener('click', function () { history.pushState({}, '', BASE); route(); });
+  $('keep').addEventListener('click', function () {
+    var html = $('frame').srcdoc, name = titleOf(html) || 'Tool', id = slug(name);
+    Tools.put({ id: id, name: name, html: html, bytes: new Blob([html]).size, updated: Date.now() }).then(function () {
+      $('keep').hidden = true;
+      history.replaceState({ run: id }, '', BASE + '?run=' + encodeURIComponent(id));
+      toast('Kept ' + name + ' on this shelf.');
+    }, function () { toast('It could not be kept here.'); });
+  });
+
+  /* ---------- deciding what to show ---------- */
+
+  function route() {
+    stopTool();
+    var id = new URLSearchParams(location.search).get('run');
+    return carried().then(function (html) {
+      if (html) { run({ id: slug(titleOf(html) || 'tool'), name: titleOf(html) || 'Tool', html: html }, 'carried'); return; }
+      if (id) {
+        return Tools.get(id).then(function (t) {
+          if (t) run(t, 'direct');
+          else askFor(id);
+        }, function () { askFor(id); });
+      }
+      show('shelf');
+      return renderShelf();
+    }, function () {
+      show('shelf'); toast('That link could not be unpacked.');
+      return renderShelf();
+    });
+  }
+  // Opening a tool from the list shows a way back to the shelf; opening its link directly does not.
+  window.addEventListener('popstate', route);
+
+  route();
+  window.__shelf = { Tools: Tools, linkFor: linkFor, carryLink: carryLink, route: route };
+})();
+</script>
+</body>
+</html>
