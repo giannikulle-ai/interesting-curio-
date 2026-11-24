@@ -296,10 +296,40 @@
     $('need').hidden = which !== 'need';
     $('stage').hidden = which !== 'stage';
   }
+  /* A link that opens another app (Shortcuts, Mail, Phone) can do nothing on iPhone when it is tapped inside a frame.
+     The shelf catches those taps and opens the link from the top page instead. Web links are left alone. */
+  var outside = { open: function (url) { window.location.href = url; } };
+  function isAppLink(href) {
+    var m = /^([a-z][a-z0-9+.\-]*):/i.exec(href || '');
+    return !!m && !/^(https?|data|blob|about|javascript|file)$/i.test(m[1]);
+  }
+  function wire(f) {
+    var doc; try { doc = f.contentDocument; } catch (e) { return; }
+    if (!doc) return;
+    doc.addEventListener('click', function (e) {
+      if (e.defaultPrevented) return;
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!a) return;
+      var href = a.getAttribute('href');
+      if (href.charAt(0) === '#') {   // a jump within the tool; left alone, the frame would load the shelf inside itself
+        e.preventDefault();
+        var id = href.slice(1), spot = null;
+        try { id = decodeURIComponent(id); } catch (err) { /* keep it as written */ }
+        if (id) spot = doc.getElementById(id) || doc.getElementsByName(id)[0] || null;
+        if (spot && spot.scrollIntoView) spot.scrollIntoView();
+        else if (!id && doc.defaultView) doc.defaultView.scrollTo(0, 0);
+        return;
+      }
+      if (!isAppLink(href)) return;
+      e.preventDefault();
+      outside.open(href);
+    });
+  }
   function run(tool, how) {
     var old = $('frame'); if (old) old.remove();
     var f = el('iframe'); f.id = 'frame'; f.title = tool.name;
     f.setAttribute('allow', 'camera; microphone; geolocation; clipboard-read; clipboard-write; fullscreen; web-share; autoplay; accelerometer; gyroscope');
+    f.addEventListener('load', function () { wire(f); });
     f.srcdoc = tool.html;
     $('stage').insertBefore(f, $('stage').firstChild);
     $('back').hidden = how !== 'from-shelf';
@@ -420,7 +450,7 @@
   window.addEventListener('popstate', route);
 
   route();
-  window.__shelf = { Tools: Tools, linkFor: linkFor, carryLink: carryLink, route: route };
+  window.__shelf = { Tools: Tools, linkFor: linkFor, carryLink: carryLink, route: route, outside: outside };
 })();
 </script>
 </body>
